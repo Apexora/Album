@@ -1,0 +1,15 @@
+/* Álbum · "papel y oro viejo": arena, oliva y corteza. Las hojas siguen siendo papel crema */
+:root[data-mood="album"] {
+  --bg: #2a1712; --gold: #e3b488; --gold-2: #f6dcbf; --gold-3: #a99441;
+  --ink: #2b1d14; --paper: #f5ead7; --paper-2: #e8d3b0;
+  --ft: var(--apx-display); --fb: var(--apx-body);
+  font-synthesis: none;
+}
+:root[data-mood="album"] body {
+  font-size: 16.5px;
+  background:
+    radial-gradient(1100px 650px at 50% -10%, #5a2d4f 0%, transparent 62%),
+    radial-gradient(800px 600px at 100% 100%, rgba(169,148,65,.38) 0%, transparent 58%),
+    var(--bg);
+}
+:root[data-mood="album"] h1, :root[data-mood="album"] h2, :root[data-mood="album"] h3 { font-weight: 400; letter-spacing: .02em; }

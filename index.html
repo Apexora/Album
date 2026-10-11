@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-mood="album">
 <head>
   <link rel="icon" type="image/png" href="/images/favicon.png">
 <meta charset="utf-8">
@@ -601,6 +601,9 @@ body.dragging-st{cursor:grabbing;user-select:none;-webkit-user-select:none}
 <script>window.APX_READY = import('https://apexora.github.io/Portal/apexora-core.js').catch(function(e){ console.warn('Núcleo Apexora no disponible', e); return null; });</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>try{var k='apx-arr:album';if(sessionStorage.getItem(k))document.documentElement.classList.add('apx-seen');else sessionStorage.setItem(k,1)}catch(e){}</script>
+<link rel="stylesheet" href="https://apexora.github.io/Portal/apexora-ui.css">
+<link rel="stylesheet" href="apexora-theme.css">
 </head>
 <body>
 <div id="app"></div>
