@@ -2323,16 +2323,6 @@ if ('serviceWorker' in navigator){
 init();
 })();
 </script>
-<script type="module">
-import { onSesion, registrarVisita, desbloquearLogro, sumarFragmentos, sumarStat }
-  from "https://apexora.github.io/portal/portal-perfil.js";
 
-onSesion((u) => { if (u) registrarVisita(); });   // cuenta la racha
-
-// Ejemplos dentro de tu juego:
-// desbloquearLogro("racha_7");
-// sumarFragmentos("comun", 15);
-// sumarStat("tcg", "victorias");
-</script> 
 </body>
 </html>
