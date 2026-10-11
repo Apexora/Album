@@ -598,6 +598,7 @@ body.dragging-st{cursor:grabbing;user-select:none;-webkit-user-select:none}
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
 </script>
+<script>window.APX_READY = import('https://apexora.github.io/Portal/apexora-core.js').catch(function(e){ console.warn('Núcleo Apexora no disponible', e); return null; });</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -796,8 +797,17 @@ async function init(){
 }
 window.addEventListener('hashchange', route);
 
-function route(){
+async function route(){
   if (location.hash === '#admin') return adminScreen();
+  /* Login único: exige sesión Apexora (si no, va al Portal y vuelve) y entra directo al jugador vinculado */
+  const apx = await window.APX_READY;
+  if (apx){
+    await apx.requerirUsuario('/Portal/');
+    const perfil = await apx.obtenerPerfil().catch(() => null);
+    const vid = perfil && perfil.vinculos && perfil.vinculos.album;
+    const vpl = vid && D.players.find(p => p.id === vid);
+    if (vpl) return startAlbum(vpl);
+  }
   const id = sess.get(K_SESSION) || store.get(K_REMEMBER);
   const pl = id && D.players.find(p => p.id === id);
   if (pl) return startAlbum(pl);
@@ -827,6 +837,7 @@ function loginScreen(msg = ''){
     catch { $('#err').textContent = 'Tu navegador no permite comprobar contraseñas aquí. Usa https o localhost.'; btn.disabled = false; btn.textContent = 'Abrir mi álbum'; return; }
     if (!found){ $('#err').textContent = 'Contraseña incorrecta. Revisa mayúsculas y espacios.'; btn.disabled = false; btn.textContent = 'Abrir mi álbum'; return; }
     (($('#rem').checked) ? store : sess).set(($('#rem').checked) ? K_REMEMBER : K_SESSION, found.id);
+    window.APX_READY.then(apx => apx && apx.vincular('album', found.id)).catch(() => {});   /* próxima vez entra sola */
     startAlbum(found);
   };
   $('#go').onclick = go;
@@ -1888,6 +1899,7 @@ function openPackFlow(type = 'taverna'){
     else if (type === 'xora') S.progress.xoraPacks = Math.max(0, (S.progress.xoraPacks || 0) - 1);
     else S.progress.packsOpened = (S.progress.packsOpened || 0) + 1;
     saveProgress(); saved = true; updateHeader();
+    window.APX_READY.then(apx => { if (apx){ apx.premiar(5, 0); apx.desbloquearLogro('album_primer_sobre'); } }).catch(() => {});
     S.newIds = new Set(ids.filter((id, k) => newFlags[k]));
     pack.classList.add('open'); msg.textContent = '';
     setTimeout(() => { pack.remove(); deal(); }, 1050);
