@@ -542,14 +542,11 @@ body.dragging-st{cursor:grabbing;user-select:none;-webkit-user-select:none}
 @media(hover:hover){.card:hover,.nat:hover,.ucard:hover{transform:translateY(-3px)}}
 @media(prefers-reduced-motion:reduce){.view.enter *,.ucard.lvup{animation:none!important}}
 .view.full{display:flex;max-width:none;padding:0;overflow:hidden}
-.view.full iframe{flex:1;width:100%;height:100%;border:0;background:#0a1220}
 .chbig{width:min(420px,86vw);margin:18px auto 12px}
 .q{font:700 1.15rem var(--ft);line-height:1.35;margin:4px 0 10px}
 .ansgrid{display:grid;gap:10px;margin:14px 0}
 .ansgrid .btn{text-align:left;white-space:normal}
 .card:disabled{opacity:.45;cursor:not-allowed}
-#vDes h3.hi{margin:34px 0 12px}
-#vDes .panel{padding:22px}
 .ansgrid .btn{text-align:left;text-transform:none;letter-spacing:0;font-size:.95rem;padding:.8em 1.1em;line-height:1.3}
 .chbig{margin:22px auto 8px}
 .chtime{display:flex;align-items:center;gap:12px;margin:0 0 16px}
@@ -572,11 +569,7 @@ body.dragging-st{cursor:grabbing;user-select:none;-webkit-user-select:none}
 .chans{display:flex;gap:10px}
 .chans input{flex:1;min-width:0;padding:.7em 1em;border-radius:12px;border:1px solid #ffffff2a;background:#081020;color:#fff;font-size:1rem}
 .chans input:focus{outline:0;border-color:var(--gold);box-shadow:0 0 0 3px #e3bf7333}
-.soon{display:grid;justify-items:center;gap:12px;text-align:center;padding:70px 20px}
-.soonic{color:var(--gold-2)}
 .badge{padding:.35em 1em;border-radius:99px;background:#e3bf7326;box-shadow:0 0 0 1px #e3bf7388;color:var(--gold-2);font:700 .8rem var(--ft);letter-spacing:.15em;text-transform:uppercase}
-#vEnc{flex-direction:column}
-.enchead{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 14px;background:#0e1a33;box-shadow:0 1px 0 #e3bf7333;font:700 .85rem var(--ft)}
 .rail button{width:76px}
 .rail button small{font-size:.54rem;letter-spacing:0;white-space:nowrap}
 @media(max-width:859px){
@@ -703,6 +696,22 @@ function checkGroups(){
   const html = nuevos.map(g => `<div class="ach" style="--gc:${col(g.color, '#f5c542')}"><div class="ach-i">🏆</div><b>${esc(g.name)}</b><small>${esc(nationOf(g.nation).name)}, ${g.ids.length} pegatinas</small></div>`).join('');
   const m = modal(`<h3>¡Logro desbloqueado!</h3>${html}<p>🎁 Ganaste ${nuevos.length} sobre${nuevos.length === 1 ? '' : 's'} de regalo.</p><div class="row"><button class="btn sm" data-goto>Verla en el álbum</button><button class="btn ghost sm" data-close>Genial</button></div>`);
   $('[data-goto]', m).onclick = () => { m.remove(); const pi = firstPageOfNation(nuevos[0].nation); if (pi >= 0) goToPage(pi); };
+}
+/* Sincroniza el progreso entre dispositivos: Firestore manda */
+const SYNC_KEYS = ['opened','bonus','packsOpened','groups','apePacks','xoraPacks','spinsLeft','spinsDone','up','streak','lastLogin','pts','firstDay','days'];
+function adoptProgress(o){
+  const p = S.progress; if (!p || !o || !Array.isArray(o.opened)) return false;
+  let ch = false;
+  for (const k of SYNC_KEYS){
+    if (o[k] === undefined) continue;
+    if (JSON.stringify(o[k]) !== JSON.stringify(p[k])){ p[k] = o[k]; ch = true; }
+  }
+  return ch;
+}
+async function syncProgress(){
+  if (!S.player || !S.progress) return;
+  try { const snap = await db.collection('players').doc(S.player.id).get({ source: 'server' }); adoptProgress(snap.data()); }
+  catch (e){ console.error('No se pudo sincronizar:', e); }
 }
 function saveProgress(){
     if (!S.player || !S.progress) return;
@@ -867,6 +876,7 @@ function listenInbox(id){
   if (S.unsub) S.unsub();
   S.unsub = db.collection('players').doc(id).onSnapshot(snap => {
     if (snap.metadata.hasPendingWrites || !S.player || S.player.id !== id) return;
+    if (!snap.metadata.fromCache && adoptProgress(snap.data())){ try { refreshAlbum(); updateHeader(); } catch {} }
     const inbox = (snap.data() || {}).inbox || [];
     if (inbox.length) claimInbox(id, inbox);
   }, e => console.error(e));
@@ -1113,12 +1123,10 @@ function setView(v){
   S.view = v;
   $('#stage').hidden = $('.foot').hidden = v !== 'album';
   $('#vHome').hidden = v !== 'home'; $('#vUp').hidden = v !== 'up';
-  $('#vDes').hidden = v !== 'des'; $('#vTcg').hidden = v !== 'tcg'; $('#vEnc').hidden = v !== 'enc';
   $$('#tabs button, #rail button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
   const el = v === 'home' ? $('#vHome') : v === 'up' ? $('#vUp') : null;
   if (el){ el.classList.add('enter'); setTimeout(() => el.classList.remove('enter'), 700); }
-  if (v === 'home') renderHome(); else if (v === 'up') renderUp(); else if (v === 'des') renderDes();
-  else if (v === 'tcg') renderTcg(); else if (v === 'enc') renderEnc(); else { layout(true); refreshAlbum(); }
+  if (v === 'home') renderHome(); else if (v === 'up') renderUp(); else { layout(true); refreshAlbum(); }
 }
 const onDark = h => {
   const m = /^#?([0-9a-f]{6})$/i.exec(h || ''); if (!m) return '#bbb';
@@ -1236,157 +1244,16 @@ Object.assign(ICONS, {
 const nIcon = n => n.icon
   ? `<img class="nico" src="${esc(n.icon)}" alt="" decoding="async" onerror="this.replaceWith('✦')">`
   : esc(n.emoji || '✦');
-/* ===== Desafío diario ===== */
-const CH_TYPES = [['trivia', 'Trivia', '#4aa3ff'], ['vof', 'V o F', '#b46bff'], ['quien', '¿Quién soy?', '#e3bf73'], ['crono', 'Cronología', '#4fd1c5'], ['imagen', 'Imagen', '#ff8f5e']];
-const CH_NAMES = { trivia: 'Trivia del Archivo', vof: 'Verdadero o falso', quien: '¿Quién soy?', crono: 'Cronología rota', imagen: 'Adivina la imagen' };
-const CH_TIME = { trivia: 20, vof: 12, quien: 40, crono: 45, imagen: 45 };
-const norm = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
-const PRICES = { taverna: 30, ape: 70, xora: 120 };
-const WHO_PTS = [50, 40, 30, 20, 10];
-function chTick(ch){
-  const tot = CH_TIME[ch.t] * 1000, end = ch.start + tot;
-  const upd = () => {
-    const ms = end - Date.now(), n = $('#chT'), bar = $('#chBar');
-    if (ms <= 0){ clearInterval(S.chTm); if (S.progress.ch && !S.progress.ch.done) chFinish(false, 0, true); return; }
-    if (n) n.textContent = Math.ceil(Math.min(tot, ms) / 1000);
-    if (bar){ bar.style.width = Math.min(100, ms / tot * 100) + '%'; bar.classList.toggle('low', ms < 6000); }
-    const im = $('#chImg');
-    if (im){ const st = Math.min(2, Math.max(0, Math.floor((Date.now() - ch.start) / (tot / 3)))); im.style.filter = st === 2 ? 'none' : `blur(${[24, 10][st]}px)`; const pv = $('#chPv'); if (pv) pv.textContent = [30, 20, 10][st]; }
-  };
-  upd(); S.chTm = setInterval(upd, 250);
-}
-const shuf = (a, r) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-async function chData(){
-  if (!S.chd){ try { S.chd = await (await fetch('desafios.json')).json(); } catch { S.chd = null; } }
-  return S.chd;
-}
-function chBuild(t, seed){
-  const r = mulberry32(seed), d = S.chd, pick = a => a[Math.floor(r() * a.length)];
-  if (t === 'trivia'){ const q = pick(d.trivia); return { q: q.q, opts: shuf([q.right, ...q.wrong], r), ok: q.right, ex: q.exp, pts: [0, 10, 20, 30][q.lvl] || 10 }; }
-  if (t === 'vof'){ const q = pick(d.vof); return { q: q.q, ok: q.t, ex: q.exp, pts: [0, 10, 15, 20][q.lvl] || 10 }; }
-  if (t === 'quien'){ const q = pick(d.quien), w = shuf(d.quien.filter(x => x.a !== q.a).map(x => x.a), r).slice(0, 3); return { clues: q.clues, ok: q.a, opts: shuf([q.a, ...w], r), ex: q.bio }; }
-    if (t === 'imagen'){ const s = pick(D.stickers.filter(x => x.image)); return { img: s.image, ok: s.name, hint: s.name.trim().split(/\s+/).map(w => w.length).join(' · ') + ' letras' }; }
-  const evs = shuf(d.crono, r).slice(0, 4); return { evs, order: evs.slice().sort((a, b) => a.y - b.y) };
-}
-function chWheelSVG(){
-  const n = CH_TYPES.length, seg = 360 / n, pt = (a, r) => { const t = (a - 90) * Math.PI / 180; return [100 + r * Math.cos(t), 100 + r * Math.sin(t)]; };
-  return `<svg viewBox="0 0 200 200">${CH_TYPES.map(([k, nm, c], i) => {
-    const a0 = i * seg, mid = a0 + seg / 2, [x0, y0] = pt(a0, 96), [x1, y1] = pt(a0 + seg, 96), [tx, ty] = pt(mid, 62), rot = mid - 90 + (mid > 180 ? 180 : 0);
-    return `<path d="M100 100 L${x0} ${y0} A96 96 0 0 1 ${x1} ${y1} Z" fill="${c}" stroke="#0a1220" stroke-width="2"/><text x="${tx}" y="${ty}" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#0a1220" transform="rotate(${rot} ${tx} ${ty})">${nm}</text>`;
-  }).join('')}</svg>`;
-}
-async function renderDes(){
-  const v = $('#vDes'), p = S.progress, day = todayStr();
-  clearInterval(S.chTm);
-  if (!(await chData())){ v.innerHTML = '<h2 class="hi">Desafío diario</h2><p class="sub">No se pudieron cargar los desafíos (falta desafios.json en el repositorio).</p>'; return; }
-  const ch = p.ch && p.ch.d === day ? p.ch : null;
-  if (ch && !ch.done && !ch.start){ ch.start = Date.now(); saveProgress(); }
-  if (ch && !ch.done && Date.now() > ch.start + CH_TIME[ch.t] * 1000){ ch.done = 1; ch.ok = 0; ch.pts = 0; ch.late = 1; saveProgress(); }
-  S.chCur = ch ? chBuild(ch.t, ch.seed) : null;
-  const main = !ch
-    ? `<div class="wheel-wrap chbig"><div class="wheel-ptr"></div><div class="wheel" id="chWheel">${chWheelSVG()}</div></div>
-       <p class="sub" style="text-align:center">Gira la ruleta para descubrir tu desafío de hoy. Tienes uno por día y tiempo limitado para responder.</p>
-       <div style="display:flex;justify-content:center;margin:14px 0 6px"><button class="btn" id="chGo" data-ch="spin">${ico('wheel', 16)} Girar</button></div>`
-    : `<div class="panel"><h3>${CH_NAMES[ch.t]}</h3>${ch.done ? chDone(ch) : chStage(ch)}</div>`;
-    const pts = p.pts || 0;
-  v.innerHTML = `<h2 class="hi">Desafío diario</h2>
-  <div class="deslay"><div>${main}</div>
-    <aside class="panel"><h3>Tus puntos</h3><div class="ptsbig">${pts}</div><p class="sub">Canjéalos por sobres:</p>
-      <div class="shop">${Object.keys(PRICES).map(k => `<button class="shopi" data-buy="${k}" ${pts < PRICES[k] ? 'disabled' : ''}><span>${ico('gift', 22)}</span><span><b>Sobre ${PACKS[k].name}</b><small>${pts < PRICES[k] ? 'Faltan ' + (PRICES[k] - pts) : 'Disponible'}</small></span><em>${PRICES[k]}</em></button>`).join('')}</div>
-    </aside></div>`;
-  if (ch && !ch.done) chTick(ch);
-}
-function chStage(ch){
-  return `<div class="chtime"><span id="chT">${CH_TIME[ch.t]}</span><div class="tbar"><i id="chBar"></i></div></div>` + chBody(ch);
-}
-function chBody(ch){
-  const c = S.chCur, t = ch.t;
-  if (t === 'trivia' || t === 'quien'){
-    const n = S.chClues || 1;
-    const head = t === 'trivia' ? `<p class="q">${esc(c.q)}</p>`
-      : `<ol>${c.clues.slice(0, n).map(x => `<li>${esc(x)}</li>`).join('')}</ol><p class="sub">Vale ${WHO_PTS[n - 1]} puntos · pista ${n} de ${c.clues.length}</p>`;
-    return head + `<div class="ansgrid">${c.opts.map((o, i) => `<button class="btn" data-ans="${i}">${esc(o)}</button>`).join('')}</div>` +
-      (t === 'quien' && n < c.clues.length ? '<button class="btn ghost sm" data-ch="clue">Otra pista (−10 puntos)</button>' : '');
-  }
-    if (t === 'imagen') return `<div class="chimg"><img id="chImg" src="${esc(c.img)}" alt="" decoding="async" style="filter:blur(24px)"></div>
-    <p class="sub">Escribe el nombre exacto · vale <b id="chPv">30</b> puntos · ${esc(c.hint)}</p>
-    <div class="chans"><input id="chIn" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Nombre"><button class="btn" data-ch="guess">Responder</button></div><p class="sub" id="chMsg"></p>`;
-  if (t === 'vof') return `<p class="q">${esc(c.q)}</p><div class="ansgrid"><button class="btn" data-ans="1">Verdadero</button><button class="btn" data-ans="0">Falso</button></div>`;
-  const sel = S.chSel || [];
-  return `<p class="sub">Toca los eventos del más antiguo al más reciente.</p><div class="ansgrid">${c.evs.map((e, i) =>
-    `<button class="btn" data-ev="${i}" ${sel.includes(i) ? 'disabled' : ''}>${sel.includes(i) ? (sel.indexOf(i) + 1) + '. ' : ''}<b>${esc(e.t)}</b> — ${esc(e.d)}</button>`).join('')}</div><button class="btn ghost sm" data-ch="rst">Reiniciar orden</button>`;
-}
-function chDone(ch){
-  const c = S.chCur, t = ch.t;
-  const ans = t === 'crono' ? `<ol>${c.order.map(e => `<li>Año ${e.y}: <b>${esc(e.t)}</b></li>`).join('')}</ol>`
-    : t === 'imagen' ? `<div class="chimg"><img src="${esc(c.img)}" alt=""></div><p>Era: <b>${esc(c.ok)}</b></p>`
-    : `<p>Respuesta: <b>${t === 'vof' ? (c.ok ? 'Verdadero' : 'Falso') : esc(c.ok)}</b></p>`;
-  return `<p class="q">${ch.late ? '¡Se acabó el tiempo!' : ch.ok ? '¡Correcto!' : (ch.pts ? 'Casi.' : 'Esta vez no.')} <b>+${ch.pts || 0} puntos</b></p>${ans}${c.ex ? `<p class="sub">${esc(c.ex)}</p>` : ''}<p class="sub">Vuelve mañana para un nuevo desafío.</p>`;
-}
-function chFinish(ok, pts, late){
-  clearInterval(S.chTm);
-  const p = S.progress; p.pts = (p.pts || 0) + pts; p.ch.done = 1; p.ch.ok = ok ? 1 : 0; p.ch.pts = pts; p.ch.late = late ? 1 : 0;
-  S.chClues = 1; S.chSel = []; saveProgress(); renderDes();
-}
-function chSpin(){
-  const p = S.progress, day = todayStr();
-  if (p.ch && p.ch.d === day) return;
-  const r = mulberry32(xmur3(`${S.player.id}|reto|${day}|${S.player.salt}`)()), ti = Math.floor(r() * CH_TYPES.length), seed = Math.floor(r() * 1e9);
-  p.ch = { d: day, t: CH_TYPES[ti][0], seed, done: 0, start: Date.now() + 4600 }; S.chClues = 1; S.chSel = []; saveProgress();
-  const seg = 360 / CH_TYPES.length, a = ti * seg + seg * .15 + Math.random() * seg * .7;
-  $('#chGo').disabled = true; $('#chWheel').style.transform = `rotate(${1800 + (360 - a)}deg)`;
-  setTimeout(renderDes, 4500);
-}
-function chClick(e){
-  const b = e.target.closest('[data-ch],[data-ans],[data-ev],[data-buy]'); if (!b || b.disabled) return;
-  const p = S.progress, ch = p.ch, c = S.chCur;
-  if (b.dataset.buy){
-    const k = b.dataset.buy; if ((p.pts || 0) < PRICES[k]) return;
-    p.pts -= PRICES[k]; grantPack(k); saveProgress(); updateHeader(); renderDes(); toast(`🎁 Canjeaste un Sobre ${PACKS[k].name}`); return;
-  }
-  if (b.dataset.ch === 'spin') return chSpin();
-  if (!ch || ch.done || !c) return;
-  if (Date.now() > ch.start + CH_TIME[ch.t] * 1000) return chFinish(false, 0, true);
-  if (b.dataset.ch === 'clue'){ S.chClues = (S.chClues || 1) + 1; return renderDes(); }
-  if (b.dataset.ch === 'rst'){ S.chSel = []; return renderDes(); }
-    if (b.dataset.ch === 'guess'){
-    const inp = $('#chIn');
-    if (norm(inp.value) === norm(c.ok)){ const st = Math.min(2, Math.max(0, Math.floor((Date.now() - ch.start) / (CH_TIME.imagen * 1000 / 3)))); return chFinish(true, [30, 20, 10][st]); }
-    $('#chMsg').textContent = 'No es ese nombre. ¡Sigue intentando!'; inp.select(); return;
-  }
-  if (b.dataset.ans != null){
-    const i = +b.dataset.ans;
-    if (ch.t === 'vof'){ const ok = !!i === c.ok; return chFinish(ok, ok ? c.pts : 0); }
-    const ok = c.opts[i] === c.ok;
-    return chFinish(ok, ok ? (ch.t === 'quien' ? WHO_PTS[(S.chClues || 1) - 1] : c.pts) : 0);
-  }
-  if (b.dataset.ev != null){
-    const sel = S.chSel = (S.chSel || []).concat(+b.dataset.ev);
-    if (sel.length < 4) return renderDes();
-    const n = sel.filter((ei, pos) => c.evs[ei] === c.order[pos]).length; chFinish(n === 4, n * 10);
-  }
-}
-const ENC_URL = 'https://apexora.github.io/Apexora-site/index.html';
-function renderTcg(){
-  $('#vTcg').innerHTML = `<div class="soon"><div class="soonic">${ico('cards', 64)}</div><h2 class="hi">TCG</h2><span class="badge">Próximamente</span><p class="sub">Estamos preparando el juego de cartas de Apexora.</p></div>`;
-}
-function renderEnc(){
-  const v = $('#vEnc');
-  if (!v.firstChild) v.innerHTML = `<div class="enchead"><span>${ico('globe', 16)} Enciclopedia de Apexora</span><a class="btn ghost sm" href="${ENC_URL}" target="_blank" rel="noopener">Abrir en pestaña nueva ↗</a></div><iframe title="Enciclopedia de Apexora" src="${ENC_URL}"></iframe>`;
-}
 function albumScreen(){
   app.innerHTML = `
     <aside class="rail" id="rail"><span class="logo">✦</span>
     <button data-v="home" title="Inicio">${ico('home',24)}<small>Inicio</small></button>
     <button data-v="album" title="Álbum">${ico('book',24)}<small>Álbum</small></button>
     <button data-v="up" title="Mejoras">${ico('zap',24)}<small>Mejoras</small></button>
-    <button data-v="des" title="Desafíos">${ico('trophy',24)}<small>Desafíos</small></button>
-        <button data-v="tcg" title="TCG">${ico('cards',24)}<small>TCG</small></button>
-    <button data-v="enc" title="Enciclopedia">${ico('globe',24)}<small>Enciclopedia</small></button>
   </aside>
     <header class="top">
     <div class="brand"><span class="logo">✦</span><b>${esc(D.title)}</b></div>
-    <nav class="tabs" id="tabs"><button data-v="home">🏠<span> Inicio</span></button><button data-v="album">📖<span> Álbum</span></button><button data-v="up">⚡<span> Mejoras</span></button><button data-v="des">${ico('trophy',16)}<span> Desafíos</span></button></nav>
+    <nav class="tabs" id="tabs"><button data-v="home">🏠<span> Inicio</span></button><button data-v="album">📖<span> Álbum</span></button><button data-v="up">⚡<span> Mejoras</span></button></nav>
     <div class="who">
       <span class="pill" id="prog"></span>
       <button class="btn sm gift" id="btnPacks" title="Abrir un sobre">${ico('gift',16)} Sobres <span class="n" id="packN">0</span></button>
@@ -1409,12 +1276,7 @@ function albumScreen(){
     <nav class="chips" id="chips" aria-label="Naciones"></nav>
   </footer>
   <section class="view" id="vHome" hidden></section>
-  <section class="view" id="vUp" hidden></section>
-  <section class="view" id="vDes" hidden></section>
-  <section class="view" id="vTcg" hidden></section>
-  <section class="view full" id="vEnc" hidden></section>`;
-  $('#vDes').onclick = chClick;
-    $('#vDes').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'chIn') chClick({ target: document.querySelector('#vDes [data-ch="guess"]') }); });
+  <section class="view" id="vUp" hidden></section>`;
   $('#btnPacks').onclick = openPackMenu;
   $('#btnSpin').onclick = openWheel;
   $('#btnOut').onclick = logout;
@@ -1860,7 +1722,8 @@ function showDupes(){
   });
 }
 /* ================= apertura de sobres ================= */
-function openPackFlow(type = 'taverna'){
+async function openPackFlow(type = 'taverna'){
+  await syncProgress();
   const stock = type === 'ape' ? (S.progress.apePacks || 0) : type === 'xora' ? (S.progress.xoraPacks || 0) : availablePacks();
   if (stock <= 0){ toast('No tienes sobres de este tipo por abrir.'); return; }
   const idx = S.progress.opened.length;
