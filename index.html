@@ -597,9 +597,41 @@ body.dragging-st{cursor:grabbing;user-select:none;-webkit-user-select:none}
 <script>try{var k='apx-arr:album';if(sessionStorage.getItem(k))document.documentElement.classList.add('apx-seen');else sessionStorage.setItem(k,1)}catch(e){}</script>
 <link rel="stylesheet" href="https://apexora.github.io/Portal/apexora-ui.css">
 <link rel="stylesheet" href="apexora-theme.css">
+<style id="fresh">
+#aurora{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;opacity:.5;filter:blur(80px) saturate(1.25)}
+#aurora i{position:absolute;display:block;width:46vmax;height:46vmax;border-radius:50%;mix-blend-mode:screen;will-change:transform}
+#aurora i:nth-child(1){background:#7b46bd;left:-12vmax;top:-14vmax}
+#aurora i:nth-child(2){background:#c9a24d;right:-16vmax;top:28vh;opacity:.7}
+#aurora i:nth-child(3){background:#2f7fd1;left:18vw;bottom:-22vmax;opacity:.8}
+#app{position:relative;z-index:1}
+.panel,.ucard,.card{background:linear-gradient(155deg,#ffffff1f,#ffffff08);backdrop-filter:blur(12px) saturate(1.25);-webkit-backdrop-filter:blur(12px) saturate(1.25);
+  box-shadow:inset 0 0 0 1px #ffffff22,inset 0 1px 0 #ffffff30,0 12px 32px #0000005c;transition:transform .28s cubic-bezier(.2,.8,.2,1),box-shadow .28s}
+.ucard:hover,.card:hover{transform:translateY(-4px);box-shadow:inset 0 0 0 1px #e3bf7366,inset 0 1px 0 #ffffff40,0 18px 40px #0000007a,0 0 28px #e3bf7326}
+.rail{background:linear-gradient(180deg,#ffffff12,#ffffff05),#0b1226b8;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:1px 0 0 #ffffff14}
+.rail button{transition:transform .2s,background .2s,box-shadow .2s}
+.rail button:hover{transform:translateX(3px)}
+.rail button.on,#tabs button.on{box-shadow:inset 0 0 0 1px #e3bf7388,0 0 22px #e3bf7333}
+.top{backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.btn{transition:transform .18s,filter .18s,box-shadow .2s}
+.btn:hover{transform:translateY(-1px);box-shadow:0 8px 22px #e3bf7338}
+.btn:active{transform:translateY(1px) scale(.98)}
+h2.hi,.modal h3,.panel h3{background:linear-gradient(180deg,#fff7dc,var(--gold));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.modal{backdrop-filter:blur(8px)}
+.modal .box{background:linear-gradient(160deg,#17284d,#0e1a33);box-shadow:0 0 0 1px #e3bf7355,0 30px 70px #000b,0 0 60px #e3bf7314}
+.ov{backdrop-filter:blur(6px)}
+.pack{filter:drop-shadow(0 0 26px #e3bf7366)}
+.pk-ape .pack{filter:drop-shadow(0 0 26px #4aa3ff77)}
+.pk-xora .pack{filter:drop-shadow(0 0 26px #b46bff88)}
+.fxp{position:absolute;left:50%;top:45%;width:10px;height:10px;margin:-5px;border-radius:50%;pointer-events:none;z-index:6;will-change:transform}
+.fxp.st{border-radius:2px;width:8px;height:14px}
+html.fx-on .view.enter .hero,html.fx-on .view.enter .cards>*,html.fx-on .view.enter .nat,html.fx-on .view.enter .ucard,html.fx-on .view.enter .panel,html.fx-on .view.enter .recent,html.fx-on .view.enter .filt{animation:none!important}
+@media(prefers-reduced-motion:reduce){#aurora{display:none}}
+</style>
 </head>
 <body>
 <div id="app"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 
 <script>
 (() => {
@@ -655,7 +687,7 @@ function modal(html){
   const m = document.createElement('div'); m.className = 'modal';
   m.innerHTML = `<div class="box">${html}</div>`;
   m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-close]')) m.remove(); });
-  document.body.appendChild(m); return m;
+  document.body.appendChild(m); fxModal(m); return m;
 }
 
 /* ================= contraseñas ================= */
@@ -981,9 +1013,100 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) music.el.pause();
   else if (!music.muted && S.player) musicPlay().then(ok => { if (!ok) musicArm(); });
 });
+/* ===== FX: GSAP (animación) + Tone.js (sonido) ===== */
+const REDUCED = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+if (window.gsap) document.documentElement.classList.add('fx-on');
+let tn = null;
+function toneStart(){
+  if (!window.Tone) return;
+  try {
+    if (Tone.context.state !== 'running') Tone.start().catch(() => {});
+    if (tn) return;
+    const rev = new Tone.Reverb({ decay: 2.4, wet: 0.3 }).toDestination();
+    const lim = new Tone.Limiter(-2).connect(rev);
+    const poly = new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'triangle' }, envelope: { attack: 0.01, decay: 0.3, sustain: 0.2, release: 0.9 } }).connect(lim); poly.volume.value = -13;
+    const bell = new Tone.PolySynth(Tone.FMSynth, { harmonicity: 3.01, modulationIndex: 8, envelope: { attack: 0.005, decay: 0.8, sustain: 0, release: 0.8 }, modulationEnvelope: { attack: 0.01, decay: 0.4, sustain: 0, release: 0.4 } }).connect(lim); bell.volume.value = -17;
+    const ui = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.002, decay: 0.07, sustain: 0, release: 0.05 } }).connect(lim); ui.volume.value = -25;
+    const boom = new Tone.MembraneSynth({ pitchDecay: 0.08, octaves: 6 }).connect(lim); boom.volume.value = -6;
+    const flt = new Tone.Filter(900, 'bandpass').connect(lim);
+    const noise = new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.02, decay: 0.35, sustain: 0, release: 0.1 } }).connect(flt); noise.volume.value = -18;
+    tn = { poly, bell, ui, boom, flt, noise };
+  } catch (e){ tn = null; }
+}
+const toneOk = () => !!(tn && window.Tone && Tone.context.state === 'running');
+function fxTick(){ if (toneOk() && !music.muted) try { tn.ui.triggerAttackRelease('A6', 0.04); } catch {} }
+function fxTear(){
+  if (!toneOk()) return;
+  try {
+    const n = Tone.now();
+    tn.flt.frequency.setValueAtTime(500, n); tn.flt.frequency.exponentialRampToValueAtTime(6000, n + 0.35);
+    tn.noise.triggerAttackRelease(0.4, n);
+    tn.bell.triggerAttackRelease('C6', 0.2, n + 0.3);
+  } catch {}
+}
+function fxSfx(lv){
+  if (!toneOk()) return false;
+  try {
+    const n = Tone.now() + 0.02, P = tn.poly, B = tn.bell;
+    if (lv <= 0){ P.triggerAttackRelease('E5', 0.12, n); P.triggerAttackRelease('B5', 0.1, n + 0.05); }
+    else if (lv === 1){ B.triggerAttackRelease('E5', 0.4, n); B.triggerAttackRelease('B5', 0.6, n + 0.11); }
+    else if (lv === 2){ ['C5','E5','G5','C6','E6'].forEach((f, i) => { P.triggerAttackRelease(f, 0.5, n + i * 0.08); B.triggerAttackRelease(f, 0.4, n + i * 0.08 + 0.02); }); }
+    else if (lv === 3){
+      P.triggerAttackRelease(['C3','C4','E4','G4','C5'], 1.6, n);
+      ['C6','E6','G6','C7','E7'].forEach((f, i) => B.triggerAttackRelease(f, 0.6, n + 0.15 + i * 0.1));
+    } else {
+      tn.boom.triggerAttackRelease('C1', 0.9, n);
+      tn.flt.frequency.setValueAtTime(300, n); tn.flt.frequency.exponentialRampToValueAtTime(8000, n + 0.85);
+      tn.noise.triggerAttackRelease(0.85, n);
+      const t2 = n + 0.85;
+      P.triggerAttackRelease(['C3','G3','C4','E4','G4','C5'], 1.8, t2);
+      ['G5','C6','E6','G6','C7'].forEach((f, i) => B.triggerAttackRelease(f, 0.8, t2 + 0.05 + i * 0.12));
+    }
+    return true;
+  } catch { return false; }
+}
+function fxEnter(el){
+  if (!window.gsap || REDUCED || !el) return;
+  const items = el.querySelectorAll('.hero,.cards>*,.nat,.ucard,.panel,.recent,.filt');
+  if (items.length) gsap.fromTo(items, { y: 24, opacity: 0, scale: 0.98 }, { y: 0, opacity: 1, scale: 1, duration: 0.6, stagger: 0.06, ease: 'power3.out', clearProps: 'transform,opacity' });
+}
+function fxModal(m){
+  if (!window.gsap || REDUCED) return;
+  const b = m.querySelector('.box'); if (!b) return;
+  gsap.from(b, { y: 36, scale: 0.9, opacity: 0, duration: 0.5, ease: 'back.out(1.7)', clearProps: 'transform,opacity' });
+  const kids = [...b.children]; if (kids.length) gsap.from(kids, { y: 10, opacity: 0, duration: 0.35, stagger: 0.04, delay: 0.12, ease: 'power2.out', clearProps: 'transform,opacity' });
+}
+function fxBurst(ov, tier, color){
+  if (!window.gsap || REDUCED || !ov) return;
+  const n = 12 + tier * 10, cols = [color, '#fff4c2', '#ffffff', color], made = [];
+  for (let i = 0; i < n; i++){
+    const p = document.createElement('i'); p.className = 'fxp' + (i % 3 === 0 ? ' st' : '');
+    p.style.background = cols[i % cols.length]; p.style.boxShadow = `0 0 10px ${color}`;
+    ov.appendChild(p); made.push(p);
+    const a = Math.random() * Math.PI * 2, d = (90 + Math.random() * 150) * (1 + tier * 0.22);
+    gsap.fromTo(p, { x: 0, y: 0, scale: 0.3 + Math.random() * 0.7, opacity: 1, rotation: 0 },
+      { x: Math.cos(a) * d, y: Math.sin(a) * d + 40, rotation: Math.random() * 540 - 270, opacity: 0, duration: 0.9 + Math.random() * 0.7, ease: 'power3.out', onComplete: () => p.remove() });
+  }
+  if (tier >= 3) gsap.fromTo(ov, { x: -7 }, { x: 0, duration: 0.6, ease: 'elastic.out(1,0.12)', clearProps: 'transform' });
+}
+function fxAurora(){
+  if (!window.gsap || REDUCED || document.getElementById('aurora')) return;
+  const a = document.createElement('div'); a.id = 'aurora'; a.innerHTML = '<i></i><i></i><i></i>';
+  document.body.insertBefore(a, document.body.firstChild);
+  a.querySelectorAll('i').forEach((el, k) => {
+    const go = () => gsap.to(el, { x: (Math.random() - 0.5) * 340, y: (Math.random() - 0.5) * 260, scale: 0.85 + Math.random() * 0.4, duration: 9 + Math.random() * 7, ease: 'sine.inOut', onComplete: go });
+    go();
+  });
+}
+fxAurora();
+document.addEventListener('pointerdown', e => {
+  toneStart();
+  if (e.target.closest && e.target.closest('.btn,#rail button,#tabs button,.chip,.card,.ucard')) setTimeout(fxTick, 0);
+}, { passive: true });
 /* ===== Sonidos de rareza (sintetizados) ===== */
 let sfxCtx = null;
 function sfxUnlock(){
+  toneStart();
   try {
     if (!sfxCtx){ const AC = window.AudioContext || window.webkitAudioContext; sfxCtx = new AC(); }
     if (sfxCtx.state === 'suspended') sfxCtx.resume().catch(() => {});
@@ -1008,6 +1131,7 @@ const sfxLevel = k => {
 };
 function sfxPlay(lv){
   sfxUnlock();
+  if (fxSfx(lv)) return;
   if (!sfxCtx) return;
   const c = sfxCtx, t = c.currentTime + 0.02;
   const m = c.createGain(); m.gain.value = 0.7; m.connect(c.destination);
@@ -1125,7 +1249,7 @@ function setView(v){
   $('#vHome').hidden = v !== 'home'; $('#vUp').hidden = v !== 'up';
   $$('#tabs button, #rail button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
   const el = v === 'home' ? $('#vHome') : v === 'up' ? $('#vUp') : null;
-  if (el){ el.classList.add('enter'); setTimeout(() => el.classList.remove('enter'), 700); }
+  if (el){ el.classList.add('enter'); setTimeout(() => el.classList.remove('enter'), 900); setTimeout(() => fxEnter(el), 0); }
   if (v === 'home') renderHome(); else if (v === 'up') renderUp(); else { layout(true); refreshAlbum(); }
 }
 const onDark = h => {
@@ -1756,7 +1880,7 @@ async function openPackFlow(type = 'taverna'){
   $('.x', ov).onclick = close;
 
   const tear = () => {
-    if (phase !== 'sealed') return; phase = 'tearing';
+    if (phase !== 'sealed') return; phase = 'tearing'; fxTear();
     // Se guarda al abrir: el contenido ya no cambia aunque cierres a medias
     const before = counts(), seen = new Set();
     ids.forEach(id => { newFlags.push(!before[id] && !seen.has(id)); seen.add(id); });
@@ -1787,7 +1911,7 @@ async function openPackFlow(type = 'taverna'){
     phase = 'flipping'; const s = stickers[i], t = tierOf(s.rarity), r = rarityOf(s.rarity);
     card.classList.remove('stack'); card.classList.add('flip');
     sfxUnlock();
-    setTimeout(() => { burst(t, col(r.color, '#ffd76b')); sfxPlay(sfxLevel(s.rarity)); }, 380);
+    setTimeout(() => { burst(t, col(r.color, '#ffd76b')); fxBurst(ov, t, col(r.color, '#ffd76b')); sfxPlay(sfxLevel(s.rarity)); }, 380);
     if (t >= 3){ ov.classList.add('flash'); setTimeout(() => ov.classList.remove('flash'), 850); }
     setTimeout(() => {
       phase = 'shown';
