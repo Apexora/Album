@@ -1366,7 +1366,7 @@ function renderUp(){
     .sort((a, b) => can(b.s, b.l) - can(a.s, a.l) || b.l - a.l);
   const fb = (k, t) => `<button class="${f === k ? 'on' : ''}" data-f="${k}">${t}</button>`;
   $('#vUp').innerHTML = `<h2 class="hi">Mejorar personajes</h2>
-    <p class="sub">Gasta sinfalitas 💎 para subir de nivel una pegatina (máx. ${UP_MAX}). La estrella N cuesta N × el valor de su rareza (Común 1, Rara 2, Épica 3, Legendaria 5, Única 8). Tienes <b>${fr}</b> 💎. ¡Al llegar al nivel 5 ganas un giro de la ruleta!</p>
+    <p class="sub">Gasta sinfalitas 💎 para subir de nivel una pegatina (máx. ${UP_MAX}). La estrella N cuesta N × el valor de su rareza (Común 1, Rara 2, Épica 3, Legendaria 5, Única 8). Tienes <b>${fr}</b> 💎.</p>
     <div class="filt">${fb('all', 'Todas')}${fb('can', `Mejorables (${nCan})`)}${fb('max', `Nivel máximo (${nMax})`)}</div>
     <div class="ugrid">${rows.map(({ s, n, l }) => `<div class="ucard"><div class="uth">${stickerHTML(s, { mini: true })}</div><b>${esc(s.name)}</b>
       <span class="lvl">${'★'.repeat(l)}${'☆'.repeat(UP_MAX - l)}</span>
@@ -1382,13 +1382,11 @@ async function upgradeSticker(sid){
     if (!apx){ toast('No hay conexión con el portal'); return; }
     if (!(await apx.gastarFragmentos('comun', cost))){ toast(`Te faltan sinfalitas (cuesta ${cost} 💎)`); refreshFrag(); return; }
     up[sid] = l + 1;
-    const maxed = up[sid] >= UP_MAX;
-    if (maxed) S.progress.spinsLeft = (S.progress.spinsLeft || 0) + 1;
     saveProgress(); updateHeader();
     S.frag = { comun: Math.max(0, getFrag().comun - cost), rara: getFrag().rara };
     renderUp(); refreshFrag();
     const cd = document.querySelector('#vUp [data-up="' + sid + '"]'); if (cd) cd.closest('.ucard').classList.add('lvup');
-    toast(`⚡ ${s.name} sube a nivel ${l + 1} · −${cost} 💎${maxed ? ' · ¡Nivel máximo! +1 giro 🎡' : ''}`);
+    toast(`⚡ ${s.name} sube a nivel ${l + 1} · −${cost} 💎${l + 1 >= UP_MAX ? ' · ¡Nivel máximo!' : ''}`);
   } catch (e){ console.error(e); toast('No se pudo gastar (revisa tu conexión)'); }
   finally { upBusy = false; }
 }
