@@ -78,6 +78,9 @@ button{cursor:pointer}
 .shopc .btn[disabled]{opacity:.55;cursor:not-allowed}
 .top .back{display:inline-flex;align-items:center;gap:6px;flex:none;text-decoration:none;white-space:nowrap;font-weight:700;color:#1a1208;background:linear-gradient(135deg,var(--gold),var(--gold-2));padding:.45em .9em;border-radius:99px;box-shadow:0 2px 0 #7a5a1c,0 4px 12px #0006}
 .top .back:hover{filter:brightness(1.08)}
+/* sin saltos: anchos fijos para los contadores */
+.top{flex-wrap:nowrap}.who{flex:none}.pill{min-width:6.6em;text-align:center;font-variant-numeric:tabular-nums}.gift .n{min-width:2em;text-align:center;font-variant-numeric:tabular-nums}
+@media (max-width:520px){.top{flex-wrap:wrap}}
 #app .top{padding-left:max(14px,env(safe-area-inset-left),var(--hud-l,0px));padding-right:max(14px,env(safe-area-inset-right),var(--hud-r,0px))}
 #app{padding-top:var(--hud-t,0px)}
 @media (max-width:520px){.top .back span{display:none}.top .back{padding:.45em .7em}}
@@ -718,7 +721,7 @@ async function loadProgress(id){
       const o = doc.data();
       if (Array.isArray(o.opened)){
         const packsOpened = (typeof o.packsOpened === 'number') ? o.packsOpened : o.opened.filter(pk => pk.ids && pk.ids.length > 1).length;
-        return { opened: o.opened, bonus: o.bonus || 0, streak: o.streak || 0, lastLogin: o.lastLogin || null, packsOpened, groups: Array.isArray(o.groups) ? o.groups : [], apePacks: o.apePacks || 0, xoraPacks: o.xoraPacks || 0, spinsLeft: o.spinsLeft || 0, spinsDone: o.spinsDone || 0, up: (o.up && typeof o.up === 'object') ? o.up : {}, firstDay: o.firstDay || '', days: o.days || 0, pts: o.pts || 0, ch: o.ch || null, sinfalitas: o.sinfalitas || 0, odita: o.odita || 0 };
+        return { opened: o.opened, bonus: o.bonus || 0, streak: o.streak || 0, lastLogin: o.lastLogin || null, packsOpened, groups: Array.isArray(o.groups) ? o.groups : [], apePacks: o.apePacks || 0, xoraPacks: o.xoraPacks || 0, spinsLeft: o.spinsLeft || 0, spinsDone: o.spinsDone || 0, up: (o.up && typeof o.up === 'object') ? o.up : {}, firstDay: o.firstDay || '', days: o.days || 0, pts: o.pts || 0, ch: o.ch || null };
       }
     }
   } catch (e){ console.error('No se pudo leer el progreso:', e); }
@@ -737,7 +740,7 @@ function checkGroups(){
   $('[data-goto]', m).onclick = () => { m.remove(); const pi = firstPageOfNation(nuevos[0].nation); if (pi >= 0) goToPage(pi); };
 }
 /* Sincroniza el progreso entre dispositivos: Firestore manda */
-const SYNC_KEYS = ['opened','bonus','packsOpened','groups','apePacks','xoraPacks','spinsLeft','spinsDone','up','streak','lastLogin','pts','firstDay','days','sinfalitas','odita'];
+const SYNC_KEYS = ['opened','bonus','packsOpened','groups','apePacks','xoraPacks','spinsLeft','spinsDone','up','streak','lastLogin','pts','firstDay','days'];
 function adoptProgress(o){
   const p = S.progress; if (!p || !o || !Array.isArray(o.opened)) return false;
   let ch = false;
@@ -759,8 +762,7 @@ function saveProgress(){
     streak: S.progress.streak || 0, lastLogin: S.progress.lastLogin || null,
     packsOpened: S.progress.packsOpened || 0, groups: S.progress.groups || [],
     apePacks: S.progress.apePacks || 0, xoraPacks: S.progress.xoraPacks || 0,
-    spinsLeft: S.progress.spinsLeft || 0, spinsDone: S.progress.spinsDone || 0, up: S.progress.up || {}, firstDay: S.progress.firstDay || '', days: S.progress.days || 0, pts: S.progress.pts || 0, ch: S.progress.ch || null,
-    sinfalitas: S.progress.sinfalitas || 0, odita: S.progress.odita || 0
+    spinsLeft: S.progress.spinsLeft || 0, spinsDone: S.progress.spinsDone || 0, up: S.progress.up || {}, firstDay: S.progress.firstDay || '', days: S.progress.days || 0, pts: S.progress.pts || 0, ch: S.progress.ch || null
   }, { merge: true }).catch(e => { console.error('No se pudo guardar:', e); toast('No se pudo guardar (revisá tu conexión)'); });
 }
 
@@ -1200,10 +1202,28 @@ function spinOutcome(n){
   for (const s of WHEEL){ x -= s.p; if (x < 0){ w = s; break; } }
   return { w, a: w.a0 + 4 + rnd() * (w.a1 - w.a0 - 8) };
 }
+/* ===== Sinfalitas = fragmentos comunes del Portal (odita = fragmentos raros) ===== */
+const getFrag = () => S.frag || { comun: 0, rara: 0 };
+async function refreshFrag(){
+  try {
+    const apx = await window.APX_READY; if (!apx) return;
+    const p = await apx.obtenerPerfil();
+    if (p && p.fragmentos) S.frag = { comun: p.fragmentos.comun || 0, rara: p.fragmentos.rara || 0 };
+  } catch {}
+  if (S.view === 'up') renderUp(); else if (S.view === 'shop') renderShop();
+}
+async function darSinfalitas(n){
+  try {
+    const apx = await window.APX_READY; if (!apx) return 0;
+    let r = await apx.premiar(n, 0);
+    if (r.comun < n){ await new Promise(ok => setTimeout(ok, 5500)); r = await apx.premiar(n, 0); } // el portal exige 5 s entre premios
+    refreshFrag(); return r.comun;
+  } catch { return 0; }
+}
 function grantPack(k){
   const p = S.progress;
-  if (k === 'sinfa') p.sinfalitas = (p.sinfalitas || 0) + 5;
-  else if (k === 'ape') p.apePacks = (p.apePacks || 0) + 1;
+  if (k === 'sinfa') return; // se paga al portal (ver darSinfalitas)
+  if (k === 'ape') p.apePacks = (p.apePacks || 0) + 1;
   else if (k === 'xora') p.xoraPacks = (p.xoraPacks || 0) + 1;
   else p.bonus = (p.bonus || 0) + 1;
 }
@@ -1228,15 +1248,17 @@ function openWheel(){
     // se guarda el premio ANTES de animar: cerrar a medias no sirve para repetir
     S.progress.spinsLeft -= 1; S.progress.spinsDone = (S.progress.spinsDone || 0) + 1;
     grantPack(r.w.k); saveProgress(); updateHeader();
+    const award = r.w.k === 'sinfa' ? darSinfalitas(5) : null;
     rot += 1800 + ((((360 - r.a) - rot) % 360) + 360) % 360;
     wheel.style.transform = `rotate(${rot}deg)`;
     msg.textContent = 'Girando…';
-    setTimeout(() => {
+    setTimeout(async () => {
       busy = false;
+      const got = award ? await award : 0;
       if (typeof sfxPlay === 'function') sfxPlay(r.w.k === 'xora' ? 3 : (r.w.k === 'ape' || r.w.k === 'sinfa') ? 1 : 0);
-      if (!m.isConnected){ toast(r.w.k === 'sinfa' ? '💎 Te tocaron 5 Sinfalitas' : `🎁 Te tocó un Sobre ${PACKS[r.w.k].name}`); return; }
+      if (!m.isConnected){ toast(r.w.k === 'sinfa' ? (got ? '💎 Te tocaron 5 Sinfalitas' : '💎 Sinfalitas: no se pudieron sumar') : `🎁 Te tocó un Sobre ${PACKS[r.w.k].name}`); return; }
       refresh();
-      msg.innerHTML = (r.w.k === 'sinfa' ? '¡Te tocaron <b>5 Sinfalitas</b>! 💎' : `¡Te tocó un <b>Sobre ${PACKS[r.w.k].name}</b>! 🎁`) + '<br><small>' + msg.innerHTML + '</small>';
+      msg.innerHTML = (r.w.k === 'sinfa' ? (got ? '¡Te tocaron <b>5 Sinfalitas</b>! 💎' : '¡Salieron <b>5 Sinfalitas</b>, pero no se pudieron sumar (límite diario o conexión)! 💎') : `¡Te tocó un <b>Sobre ${PACKS[r.w.k].name}</b>! 🎁`) + '<br><small>' + msg.innerHTML + '</small>';
     }, 4400);
   };
   refresh();
@@ -1252,7 +1274,7 @@ function openPackMenu(){
   $$('[data-k]', m).forEach(b => b.onclick = () => { m.remove(); openPackFlow(b.dataset.k); });
 }
 /* ===== Vistas: inicio y mejoras ===== */
-const UP_MAX = 5, upCost = l => l + 1;
+const UP_MAX = 5;
 function setView(v){
   S.view = v;
   $('#stage').hidden = $('.foot').hidden = v !== 'album';
@@ -1260,6 +1282,7 @@ function setView(v){
   $$('#tabs button, #rail button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
   const el = v === 'home' ? $('#vHome') : v === 'up' ? $('#vUp') : v === 'shop' ? $('#vShop') : null;
   if (el){ el.classList.add('enter'); setTimeout(() => el.classList.remove('enter'), 900); setTimeout(() => fxEnter(el), 0); }
+  if (v === 'up' || v === 'shop') refreshFrag();
   if (v === 'home') renderHome(); else if (v === 'up') renderUp(); else if (v === 'shop') renderShop(); else { layout(true); refreshAlbum(); }
 }
 const onDark = h => {
@@ -1319,7 +1342,7 @@ function renderHome(){
   </div>`;
 }
 function renderShop(){
-  const sf = S.progress.sinfalitas || 0, od = S.progress.odita || 0;
+  const sf = getFrag().comun, od = getFrag().rara;
   $('#vShop').innerHTML = `<h2 class="hi">Tienda</h2>
     <p class="sub">Compra sobres con Sinfalita u Odita.</p>
     <div class="cards">
@@ -1331,32 +1354,43 @@ function renderShop(){
       <span>Sinfalita u Odita</span>
       <button class="btn sm" disabled>Próximamente</button></div>`).join('')}</div>`;
 }
+const UP_MULT = { comun: 1, rara: 2, epica: 3, legendaria: 5, unica: 8 }; // estrella k cuesta k × multiplicador (en sinfalitas)
+const upCostFor = (s, l) => (l + 1) * (UP_MULT[s.rarity] || 1);
+let upBusy = false;
 function renderUp(){
-  const c = counts(), up = S.progress.up || {}, f = S.upf || 'all';
-  const can = (n, l) => l < UP_MAX && n - 1 >= upCost(l);
+  const c = counts(), up = S.progress.up || {}, f = S.upf || 'all', fr = getFrag().comun;
+  const can = (s, l) => l < UP_MAX && fr >= upCostFor(s, l);
   let rows = D.stickers.filter(s => c[s.id]).map(s => ({ s, n: c[s.id], l: up[s.id] || 0 }));
-  const nCan = rows.filter(x => can(x.n, x.l)).length, nMax = rows.filter(x => x.l >= UP_MAX).length;
-  rows = rows.filter(x => f === 'can' ? can(x.n, x.l) : f === 'max' ? x.l >= UP_MAX : true)
-    .sort((a, b) => can(b.n, b.l) - can(a.n, a.l) || b.l - a.l);
+  const nCan = rows.filter(x => can(x.s, x.l)).length, nMax = rows.filter(x => x.l >= UP_MAX).length;
+  rows = rows.filter(x => f === 'can' ? can(x.s, x.l) : f === 'max' ? x.l >= UP_MAX : true)
+    .sort((a, b) => can(b.s, b.l) - can(a.s, a.l) || b.l - a.l);
   const fb = (k, t) => `<button class="${f === k ? 'on' : ''}" data-f="${k}">${t}</button>`;
   $('#vUp').innerHTML = `<h2 class="hi">Mejorar personajes</h2>
-    <p class="sub">Gasta repetidas de una pegatina para subirla de nivel (máx. ${UP_MAX}). Del nivel N al N+1 cuesta N+1 repetidas. ¡Al llegar al nivel 5 ganas un giro de la ruleta!</p>
+    <p class="sub">Gasta sinfalitas 💎 para subir de nivel una pegatina (máx. ${UP_MAX}). La estrella N cuesta N × el valor de su rareza (Común 1, Rara 2, Épica 3, Legendaria 5, Única 8). Tienes <b>${fr}</b> 💎. ¡Al llegar al nivel 5 ganas un giro de la ruleta!</p>
     <div class="filt">${fb('all', 'Todas')}${fb('can', `Mejorables (${nCan})`)}${fb('max', `Nivel máximo (${nMax})`)}</div>
     <div class="ugrid">${rows.map(({ s, n, l }) => `<div class="ucard"><div class="uth">${stickerHTML(s, { mini: true })}</div><b>${esc(s.name)}</b>
       <span class="lvl">${'★'.repeat(l)}${'☆'.repeat(UP_MAX - l)}</span>
-      <small class="ucost">${l >= UP_MAX ? 'Nivel máximo' : `Cuesta ${upCost(l)} · tienes ${n - 1}`}</small>
-      <button class="btn sm" data-up="${s.id}" ${can(n, l) ? '' : 'disabled'}>${ico('zap',14)} Mejorar</button></div>`).join('') || '<p class="sub">No hay pegatinas en este filtro.</p>'}</div>`;
+      <small class="ucost">${l >= UP_MAX ? 'Nivel máximo' : `Cuesta ${upCostFor(s, l)} 💎`}</small>
+      <button class="btn sm" data-up="${s.id}" ${can(s, l) ? '' : 'disabled'}>${ico('zap',14)} Mejorar</button></div>`).join('') || '<p class="sub">No hay pegatinas en este filtro.</p>'}</div>`;
 }
-function upgradeSticker(sid){
-  const up = S.progress.up = S.progress.up || {}, l = up[sid] || 0, cost = upCost(l);
-  if (l >= UP_MAX || (counts()[sid] || 0) - 1 < cost) return;
-  for (let i = 0; i < cost; i++) removeOneCopy(S.progress, sid);
-  up[sid] = l + 1;
-  const maxed = up[sid] >= UP_MAX;
-  if (maxed) S.progress.spinsLeft = (S.progress.spinsLeft || 0) + 1;
-  saveProgress(); renderUp(); updateHeader();
-  const cd = document.querySelector('#vUp [data-up="' + sid + '"]'); if (cd) cd.closest('.ucard').classList.add('lvup');
-  toast(`⚡ ${stickerById(sid).name} sube a nivel ${l + 1}${maxed ? ' · ¡Nivel máximo! +1 giro 🎡' : ''}`);
+async function upgradeSticker(sid){
+  const s = stickerById(sid), up = S.progress.up = S.progress.up || {}, l = up[sid] || 0;
+  if (!s || upBusy || l >= UP_MAX || !(counts()[sid] || 0)) return;
+  const cost = upCostFor(s, l); upBusy = true;
+  try {
+    const apx = await window.APX_READY;
+    if (!apx){ toast('No hay conexión con el portal'); return; }
+    if (!(await apx.gastarFragmentos('comun', cost))){ toast(`Te faltan sinfalitas (cuesta ${cost} 💎)`); refreshFrag(); return; }
+    up[sid] = l + 1;
+    const maxed = up[sid] >= UP_MAX;
+    if (maxed) S.progress.spinsLeft = (S.progress.spinsLeft || 0) + 1;
+    saveProgress(); updateHeader();
+    S.frag = { comun: Math.max(0, getFrag().comun - cost), rara: getFrag().rara };
+    renderUp(); refreshFrag();
+    const cd = document.querySelector('#vUp [data-up="' + sid + '"]'); if (cd) cd.closest('.ucard').classList.add('lvup');
+    toast(`⚡ ${s.name} sube a nivel ${l + 1} · −${cost} 💎${maxed ? ' · ¡Nivel máximo! +1 giro 🎡' : ''}`);
+  } catch (e){ console.error(e); toast('No se pudo gastar (revisa tu conexión)'); }
+  finally { upBusy = false; }
 }
 /* ===== Iconos ===== */
 const ICONS = {
@@ -1915,7 +1949,7 @@ async function openPackFlow(type = 'taverna'){
     else if (type === 'xora') S.progress.xoraPacks = Math.max(0, (S.progress.xoraPacks || 0) - 1);
     else S.progress.packsOpened = (S.progress.packsOpened || 0) + 1;
     saveProgress(); saved = true; updateHeader();
-    window.APX_READY.then(apx => { if (apx){ apx.premiar(5, 0); apx.desbloquearLogro('album_primer_sobre'); } }).catch(() => {});
+    window.APX_READY.then(apx => { if (apx){ apx.desbloquearLogro('album_primer_sobre'); } }).catch(() => {});
     S.newIds = new Set(ids.filter((id, k) => newFlags[k]));
     pack.classList.add('open'); msg.textContent = '';
     setTimeout(() => { pack.remove(); deal(); }, 1050);
@@ -2353,12 +2387,11 @@ init();
 </script>
 <script type="module" src="https://apexora.github.io/Portal/apexora-hud.js"></script>
 <script>
-/* Deja libre el espacio del HUD del portal: laterales si es una esquina, o baja la app si ocupa todo el ancho */
+/* Deja libre el espacio del HUD del portal (se mide cuando ya terminó de animarse; sin observar cambios para que la barra no salte) */
 (function(){
-  var root = document.documentElement, t = 0;
+  var root = document.documentElement, cur = { l: 0, r: 0, t: 0 }, t = 0;
   function fit(){
-    var l = 0, r = 0, tp = 0, W = innerWidth;
-    var els = document.body.children;
+    var l = 0, r = 0, tp = 0, W = innerWidth, els = document.body.children;
     for (var i = 0; i < els.length; i++){
       var e = els[i];
       if (e.id === 'app' || e.id === 'aurora' || e.tagName === 'SCRIPT' || e.tagName === 'STYLE' || e.classList.contains('modal') || e.classList.contains('toast') || e.classList.contains('ov')) continue;
@@ -2366,18 +2399,16 @@ init();
       if (cs.position !== 'fixed' || cs.display === 'none' || cs.visibility === 'hidden') continue;
       var b = e.getBoundingClientRect();
       if (!b.width || !b.height || b.top > 90 || b.height > 160) continue;
-      if (b.width > W * 0.6) tp = Math.max(tp, b.bottom);
-      else if (b.left + b.width / 2 < W / 2) l = Math.max(l, b.right + 10);
-      else r = Math.max(r, W - b.left + 10);
+      if (b.width > W * 0.6) tp = Math.max(tp, Math.round(b.bottom));
+      else if (b.left + b.width / 2 < W / 2) l = Math.max(l, Math.round(b.right) + 10);
+      else r = Math.max(r, Math.round(W - b.left) + 10);
     }
-    root.style.setProperty('--hud-l', l + 'px');
-    root.style.setProperty('--hud-r', r + 'px');
-    root.style.setProperty('--hud-t', tp + 'px');
+    if (Math.abs(l - cur.l) < 3 && Math.abs(r - cur.r) < 3 && Math.abs(tp - cur.t) < 3) return;
+    cur = { l: l, r: r, t: tp };
+    root.style.setProperty('--hud-l', l + 'px'); root.style.setProperty('--hud-r', r + 'px'); root.style.setProperty('--hud-t', tp + 'px');
   }
-  function later(){ clearTimeout(t); t = setTimeout(fit, 120); }
-  addEventListener('resize', later);
-  new MutationObserver(later).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
-  [300, 1000, 2500].forEach(function(ms){ setTimeout(fit, ms); });
+  addEventListener('resize', function(){ clearTimeout(t); t = setTimeout(fit, 200); });
+  [400, 1200, 3000, 6000].forEach(function(ms){ setTimeout(fit, ms); });
 })();
 </script>
 </body>
