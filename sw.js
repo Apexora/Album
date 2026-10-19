@@ -1,5 +1,5 @@
-const CACHE = 'apexora-v5';
-const CORE = ['./', './index.html', './manifest.json'];
+const CACHE = 'apexora-v6';
+const CORE = ['./', './index.html', './manifest.json', './apexora-core.js', './apexora-theme.css', './data.json'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)));
   self.skipWaiting();
