@@ -719,7 +719,7 @@ async function loadProgress(id){
       const o = doc.data();
       if (Array.isArray(o.opened)){
         const packsOpened = (typeof o.packsOpened === 'number') ? o.packsOpened : o.opened.filter(pk => pk.ids && pk.ids.length > 1).length;
-        return { opened: o.opened, bonus: o.bonus || 0, streak: o.streak || 0, lastLogin: o.lastLogin || null, packsOpened, groups: Array.isArray(o.groups) ? o.groups : [], apePacks: o.apePacks || 0, xoraPacks: o.xoraPacks || 0, spinsLeft: o.spinsLeft || 0, spinsDone: o.spinsDone || 0, up: (o.up && typeof o.up === 'object') ? o.up : {}, firstDay: o.firstDay || '', days: o.days || 0, pts: o.pts || 0, ch: o.ch || null, sinfaPend: o.sinfaPend || 0, _pend: o.sinfaPend !== undefined, _legacy: o.sinfalitas !== undefined || o.odita !== undefined };
+        return { opened: o.opened, bonus: o.bonus || 0, streak: o.streak || 0, lastLogin: o.lastLogin || null, packsOpened, groups: Array.isArray(o.groups) ? o.groups : [], apePacks: o.apePacks || 0, xoraPacks: o.xoraPacks || 0, spinsLeft: o.spinsLeft || 0, spinsDone: o.spinsDone || 0, up: (o.up && typeof o.up === 'object') ? o.up : {}, firstDay: o.firstDay || '', days: o.days || 0, pts: o.pts || 0, ch: o.ch || null, sinfaPend: o.sinfaPend || 0, compras: o.compras || null, _pend: o.sinfaPend !== undefined, _legacy: o.sinfalitas !== undefined || o.odita !== undefined };
       }
     }
   } catch (e){ console.error('No se pudo leer el progreso:', e); }
@@ -738,7 +738,7 @@ function checkGroups(){
   $('[data-goto]', m).onclick = () => { m.remove(); const pi = firstPageOfNation(nuevos[0].nation); if (pi >= 0) goToPage(pi); };
 }
 /* Sincroniza el progreso entre dispositivos: Firestore manda */
-const SYNC_KEYS = ['opened','bonus','packsOpened','groups','apePacks','xoraPacks','spinsLeft','spinsDone','up','streak','lastLogin','pts','firstDay','days','sinfaPend'];
+const SYNC_KEYS = ['opened','bonus','packsOpened','groups','apePacks','xoraPacks','spinsLeft','spinsDone','up','streak','lastLogin','pts','firstDay','days','sinfaPend','compras'];
 function adoptProgress(o){
   const p = S.progress; if (!p || !o || !Array.isArray(o.opened)) return false;
   let ch = false;
@@ -764,6 +764,7 @@ function saveProgress(){
     spinsLeft: p.spinsLeft || 0, spinsDone: p.spinsDone || 0, up: p.up || {}, firstDay: p.firstDay || '', days: p.days || 0, pts: p.pts || 0, ch: p.ch || null
   };
   if (p._legacy){ const del = firebase.firestore.FieldValue.delete(); data.sinfalitas = del; data.odita = del; } // campos de una versión anterior: las reglas ya no los admiten
+  if (p.compras) data.compras = p.compras;
   if (p.sinfaPend || p._pend) data.sinfaPend = p.sinfaPend || 0; // solo se envía si existe, para no chocar con reglas viejas
   return db.collection('players').doc(S.player.id).set(data, { merge: true }).then(() => { p._legacy = false; return true; }).catch(e => {
     console.error('No se pudo guardar:', e);
@@ -1376,18 +1377,52 @@ function renderHome(){
     </div></aside>
   </div>`;
 }
+/* ===== Tienda: sobres a cambio de sinfalitas (fragmentos comunes del portal) ===== */
+const SHOP = { taverna: { price: 8, lim: 3 }, ape: { price: 30, lim: 2 }, xora: { price: 100, lim: 1 } };
+const comprasHoy = k => { const c = S.progress.compras; return c && c.dia === todayStr() ? (c[k] || 0) : 0; };
+let buying = false;
 function renderShop(){
   const sf = getFrag().comun, od = getFrag().rara;
   $('#vShop').innerHTML = `<h2 class="hi">Tienda</h2>
-    <p class="sub">Compra sobres con Sinfalita u Odita.</p>
+    <p class="sub">Compra sobres con sinfalitas 💎. Los límites se renuevan cada día.</p>
     <div class="cards">
       <div class="card"><span style="font-size:1.6rem">💎</span><b>${sf}</b><span>Sinfalitas</span></div>
-      <div class="card"><span style="font-size:1.6rem">🔮</span><b>${od}</b><span>Odita</span></div>
+      <div class="card"><span style="font-size:1.6rem">🔮</span><b>${od}</b><span>Odita · pronto</span></div>
     </div>
-    <div class="cards shop">${Object.keys(PACKS).map(k => `<div class="card shopc" style="--pc:${PACKS[k].c}">
-      <span style="color:${PACKS[k].c}">${ico('gift', 34)}</span><b>Sobre ${PACKS[k].name}</b>
-      <span>Sinfalita u Odita</span>
-      <button class="btn sm" disabled>Próximamente</button></div>`).join('')}</div>`;
+    <div class="cards shop">${Object.keys(SHOP).map(k => {
+      const it = SHOP[k], used = comprasHoy(k), left = it.lim - used;
+      const why = left <= 0 ? 'Límite de hoy' : sf < it.price ? 'Te faltan sinfalitas' : '';
+      return `<div class="card shopc" style="--pc:${PACKS[k].c}">
+        <span style="color:${PACKS[k].c}">${ico('gift', 34)}</span><b>Sobre ${PACKS[k].name}</b>
+        <span>${it.price} 💎 · hoy ${used}/${it.lim}</span>
+        <button class="btn sm" data-buy="${k}" ${why || buying ? 'disabled' : ''}>${why || 'Comprar'}</button></div>`;
+    }).join('')}</div>`;
+  $('#vShop').onclick = e => { const b = e.target.closest('[data-buy]'); if (b && !b.disabled) buyPack(b.dataset.buy); };
+}
+async function buyPack(k){
+  const it = SHOP[k]; if (!it || buying) return;
+  buying = true; renderShop();
+  const P = S.progress;
+  let snap = null;
+  const undo = () => { if (snap) Object.assign(P, snap); updateHeader(); };
+  try {
+    await syncProgress();
+    const hoy = todayStr();
+    if (!P.compras || P.compras.dia !== hoy) P.compras = { dia: hoy, taverna: 0, ape: 0, xora: 0 };
+    if ((P.compras[k] || 0) >= it.lim){ toast('Ya alcanzaste el límite de hoy'); return; }
+    await refreshFrag();
+    if (getFrag().comun < it.price){ toast(`Te faltan sinfalitas (cuesta ${it.price} 💎)`); return; }
+    snap = { compras: Object.assign({}, P.compras), bonus: P.bonus, apePacks: P.apePacks, xoraPacks: P.xoraPacks };
+    P.compras[k] = (P.compras[k] || 0) + 1; grantPack(k); updateHeader();
+    if (!(await saveProgress())){ undo(); return; } // primero se guarda el sobre; si falla no se cobra
+    let ok = false;
+    try { const apx = await window.APX_READY; ok = !!apx && await apx.gastarFragmentos('comun', it.price); } catch (e){ console.error(e); }
+    if (!ok){ undo(); await saveProgress(); toast('No se pudo cobrar, no se entregó el sobre'); return; }
+    S.frag = { comun: Math.max(0, getFrag().comun - it.price), rara: getFrag().rara };
+    if (typeof sfxPlay === 'function') sfxPlay(1);
+    toast(`🎁 Sobre ${PACKS[k].name} comprado · −${it.price} 💎`);
+  } catch (e){ console.error(e); undo(); toast('No se pudo completar la compra'); }
+  finally { buying = false; renderShop(); refreshFrag(); }
 }
 const UP_MULT = { comun: 1, rara: 2, epica: 3, legendaria: 5, unica: 8 }; // estrella k cuesta k × multiplicador (en sinfalitas)
 const upCostFor = (s, l) => (l + 1) * (UP_MULT[s.rarity] || 1);
