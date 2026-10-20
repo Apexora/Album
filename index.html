@@ -719,7 +719,7 @@ async function loadProgress(id){
       const o = doc.data();
       if (Array.isArray(o.opened)){
         const packsOpened = (typeof o.packsOpened === 'number') ? o.packsOpened : o.opened.filter(pk => pk.ids && pk.ids.length > 1).length;
-        return { opened: o.opened, bonus: o.bonus || 0, streak: o.streak || 0, lastLogin: o.lastLogin || null, packsOpened, groups: Array.isArray(o.groups) ? o.groups : [], apePacks: o.apePacks || 0, xoraPacks: o.xoraPacks || 0, spinsLeft: o.spinsLeft || 0, spinsDone: o.spinsDone || 0, up: (o.up && typeof o.up === 'object') ? o.up : {}, firstDay: o.firstDay || '', days: o.days || 0, pts: o.pts || 0, ch: o.ch || null, sinfaPend: o.sinfaPend || 0 };
+        return { opened: o.opened, bonus: o.bonus || 0, streak: o.streak || 0, lastLogin: o.lastLogin || null, packsOpened, groups: Array.isArray(o.groups) ? o.groups : [], apePacks: o.apePacks || 0, xoraPacks: o.xoraPacks || 0, spinsLeft: o.spinsLeft || 0, spinsDone: o.spinsDone || 0, up: (o.up && typeof o.up === 'object') ? o.up : {}, firstDay: o.firstDay || '', days: o.days || 0, pts: o.pts || 0, ch: o.ch || null, sinfaPend: o.sinfaPend || 0, _pend: o.sinfaPend !== undefined, _legacy: o.sinfalitas !== undefined || o.odita !== undefined };
       }
     }
   } catch (e){ console.error('No se pudo leer el progreso:', e); }
@@ -754,14 +754,26 @@ async function syncProgress(){
   catch (e){ console.error('No se pudo sincronizar:', e); }
 }
 function saveProgress(){
-  if (!S.player || !S.progress) return Promise.resolve();
-  return db.collection('players').doc(S.player.id).set({
-    opened: S.progress.opened, bonus: S.progress.bonus || 0,
-    streak: S.progress.streak || 0, lastLogin: S.progress.lastLogin || null,
-    packsOpened: S.progress.packsOpened || 0, groups: S.progress.groups || [],
-    apePacks: S.progress.apePacks || 0, xoraPacks: S.progress.xoraPacks || 0,
-    spinsLeft: S.progress.spinsLeft || 0, spinsDone: S.progress.spinsDone || 0, up: S.progress.up || {}, firstDay: S.progress.firstDay || '', days: S.progress.days || 0, pts: S.progress.pts || 0, ch: S.progress.ch || null, sinfaPend: S.progress.sinfaPend || 0
-  }, { merge: true }).catch(e => { console.error('No se pudo guardar:', e); toast('No se pudo guardar (revisá tu conexión)'); });
+  if (!S.player || !S.progress) return Promise.resolve(false);
+  const p = S.progress;
+  const data = {
+    opened: p.opened, bonus: p.bonus || 0,
+    streak: p.streak || 0, lastLogin: p.lastLogin || null,
+    packsOpened: p.packsOpened || 0, groups: p.groups || [],
+    apePacks: p.apePacks || 0, xoraPacks: p.xoraPacks || 0,
+    spinsLeft: p.spinsLeft || 0, spinsDone: p.spinsDone || 0, up: p.up || {}, firstDay: p.firstDay || '', days: p.days || 0, pts: p.pts || 0, ch: p.ch || null
+  };
+  if (p._legacy){ const del = firebase.firestore.FieldValue.delete(); data.sinfalitas = del; data.odita = del; } // campos de una versión anterior: las reglas ya no los admiten
+  if (p.sinfaPend || p._pend) data.sinfaPend = p.sinfaPend || 0; // solo se envía si existe, para no chocar con reglas viejas
+  return db.collection('players').doc(S.player.id).set(data, { merge: true }).then(() => { p._legacy = false; return true; }).catch(e => {
+    console.error('No se pudo guardar:', e);
+    if (e && e.code === 'permission-denied'){ // diagnóstico: qué se envió vs qué hay en el servidor
+      const pick = o => o && ({ lastLogin: o.lastLogin, spinsLeft: o.spinsLeft, spinsDone: o.spinsDone, sinfaPend: o.sinfaPend, bonus: o.bonus, apePacks: o.apePacks, xoraPacks: o.xoraPacks, pts: o.pts, claves: Object.keys(o).sort().join(',') });
+      db.collection('players').doc(S.player.id).get({ source: 'server' }).then(sn => console.warn('[guardado rechazado]', { enviado: pick(data), servidor: pick(sn.data()) })).catch(() => {});
+    }
+    toast(e && e.code === 'permission-denied' ? 'No se pudo guardar: sin permiso (¿reglas de Firebase sin actualizar?)' : 'No se pudo guardar (revisá tu conexión)');
+    return false;
+  });
 }
 
 let _cnt = null;
@@ -1227,7 +1239,7 @@ function cobrarSinfalitas(){
       while ((S.progress.sinfaPend || 0) > 0 && ceros < 2){
         const r = await apx.premiar(Math.min(S.progress.sinfaPend, 60), 0);
         const g = (r && r.comun) || 0;
-        if (g > 0){ ceros = 0; total += g; S.progress.sinfaPend = Math.max(0, S.progress.sinfaPend - g); await saveProgress(); }
+        if (g > 0){ ceros = 0; total += g; S.progress.sinfaPend = Math.max(0, S.progress.sinfaPend - g); if (!(await saveProgress())) break; }
         else ceros++;
         if ((S.progress.sinfaPend || 0) > 0) await new Promise(ok => setTimeout(ok, 5500)); // el portal exige 5 s entre premios
       }
@@ -1240,7 +1252,7 @@ function cobrarSinfalitas(){
 }
 function grantPack(k){
   const p = S.progress;
-  if (k === 'sinfa'){ p.sinfaPend = (p.sinfaPend || 0) + 5; return; } // se cobra en el portal (ver cobrarSinfalitas)
+  if (k === 'sinfa'){ p.sinfaPend = (p.sinfaPend || 0) + 5; p._pend = true; return; } // se cobra en el portal (ver cobrarSinfalitas)
   if (k === 'ape') p.apePacks = (p.apePacks || 0) + 1;
   else if (k === 'xora') p.xoraPacks = (p.xoraPacks || 0) + 1;
   else p.bonus = (p.bonus || 0) + 1;
@@ -1266,9 +1278,12 @@ function openWheel(){
     if (typeof sfxUnlock === 'function') sfxUnlock();
     const r = spinOutcome(S.progress.spinsDone || 0);
     // se guarda el premio ANTES de animar: cerrar a medias no sirve para repetir
-    S.progress.spinsLeft -= 1; S.progress.spinsDone = (S.progress.spinsDone || 0) + 1;
+    const P = S.progress, snap = { spinsLeft: P.spinsLeft, spinsDone: P.spinsDone, bonus: P.bonus, apePacks: P.apePacks, xoraPacks: P.xoraPacks, sinfaPend: P.sinfaPend };
+    P.spinsLeft -= 1; P.spinsDone = (P.spinsDone || 0) + 1;
     grantPack(r.w.k); updateHeader();
-    await saveProgress();
+    if (!(await saveProgress())){ // si no se guardó, el giro no cuenta (así no se puede repetir un premio)
+      Object.assign(P, snap); updateHeader(); busy = false; refresh(); return;
+    }
     const award = r.w.k === 'sinfa' ? cobrarSinfalitas() : null;
     rot += 1800 + ((((360 - r.a) - rot) % 360) + 360) % 360;
     wheel.style.transform = `rotate(${rot}deg)`;
